@@ -1,5 +1,5 @@
 import torch
 
-a=torch.tensor([1])
-b=torch.tensor([a])
+a=[[1,2,3]]
+print(torch.tensor(a))
 

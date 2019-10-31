@@ -105,52 +105,46 @@ class RNN(nn.Module):
 
 
 # 参数为 相似度，第一个句子,第二个句子，原始相似度得分 ,第一个rnn模型，第二个rnn模型，以及学习率
-def train(sentence_tensor1,sentence_tensor2, original_score, rnn1, rnn2,learning_rate,criterion):
-    hidden1 = rnn1.initHidden()
+def predict(sentence_tensor1,sentence_tensor2, original_score, rnn1, rnn2,criterion):
+    with torch.no_grad():
+        hidden1 = rnn1.initHidden()
+        hidden2 = rnn2.initHidden()
 
-    hidden2 = rnn2.initHidden()
-    # 置梯度为0
-    rnn1.zero_grad()
-    rnn2.zero_grad()
+        # 置梯度为0
+        rnn1.zero_grad()
+        rnn2.zero_grad()
 
-    # 两个模型的输出
-    output1=0
-    output2=0
+        # 两个模型的输出
+        output1=0
+        output2=0
 
-    # 将句子里的每一个单词输入进模型
-    for i in range(sentence_tensor1.size()[0]):
-        # print(sentence_tensor1[i])
-        output1, hidden1 = rnn1(sentence_tensor1[i], hidden1)
-    for i in range(sentence_tensor2.size()[0]):
-        output2, hidden2 = rnn2(sentence_tensor2[i], hidden2)
+        # 将句子里的每一个单词输入进模型
+        for i in range(sentence_tensor1.size()[0]):
+            # print(sentence_tensor1[i])
+            output1, hidden1 = rnn1(sentence_tensor1[i], hidden1)
+        for i in range(sentence_tensor2.size()[0]):
+            output2, hidden2 = rnn2(sentence_tensor2[i], hidden2)
 
-    # 计算两个output的余弦相似度
-    cos_simi=torch.cosine_similarity(output1,output2)
-    # 计算得分，区间为0-5
-    predict_score=5*cos_simi
-    loss=criterion(predict_score,original_score)
-    loss.backward()
+        # 计算两个output的余弦相似度
+        cos_simi=torch.cosine_similarity(output1,output2)
+        # 计算得分，区间为0-5
+        predict_score=5*cos_simi
+        loss=criterion(predict_score,original_score)
 
-    # Add parameters' gradients to their values, multiplied by learning rate
-    for p in rnn1.parameters():
-        p.data.add_(-learning_rate, p.grad.data)
-    for p in rnn2.parameters():
-        p.data.add_(-learning_rate, p.grad.data)
-
-    return predict_score, loss.item()
+        return predict_score, loss.item()
 
 
 if __name__=='__main__':
     train_data_raw=load_data('data/sts-train.txt')[:100]
     dev_data_raw=load_data('data/sts-dev.txt')[:100]
-    # test_data_raw=load_data('data/sts-test.txt')[:100]
+    test_data_raw=load_data('data/sts-test.txt')
 
     word_dict=get_word_dict(train_data_raw,dev_data_raw)
     dict_len=len(word_dict)+1
     print("The length of the word_list is "+str(dict_len))
-    train_data=get_word_vect(train_data_raw,word_dict)
-    dev_data=get_word_vect(dev_data_raw,word_dict)
-    # test_data=get_word_vect(test_data_raw,word_dict)
+    # train_data=get_word_vect(train_data_raw,word_dict)
+    # dev_data=get_word_vect(dev_data_raw,word_dict)
+    test_data=get_word_vect(test_data_raw,word_dict)
 
     # print(train_data[:3])
     #---------------------以上是数据处理部分----------------------------
@@ -165,56 +159,24 @@ if __name__=='__main__':
     rnn1 = RNN(dict_len, n_hidden, n_output)
     # 句子2的RNN模型
     rnn2 = RNN(dict_len, n_hidden, n_output)
-    # 迭代次数
-    n_iters = 500
-    # 学习率
-    learning_rate=0.1
 
-    # print_every = 5000
-    # plot_every = 1000
+    rnn1.load_state_dict(torch.load('rnn1_params.pkl'))
+    rnn2.load_state_dict(torch.load('rnn2_params.pkl'))
 
-    # 一次迭代的总损失
-    current_loss = 0
-    # 最好的一次损失
-    best_loss=float('inf')
-    # 保存每次迭代的总损失
-    all_losses = []
-    # 记录预测的结果
     all_score=[]
+    all_loss=[]
+    for feature in test_data:
+        original_score = torch.tensor(feature[0], dtype=torch.float)
+        sentence_tensor1 = torch.tensor(feature[1], dtype=torch.float)
+        sentence_tensor2 = torch.tensor(feature[2], dtype=torch.float)
 
-    def timeSince(since):
-        now = time.time()
-        s = now - since
-        m = math.floor(s / 60)
-        s -= m * 60
-        return '%dm %ds' % (m, s)
+        predict_score,loss=predict(sentence_tensor1, sentence_tensor2, original_score, rnn1, rnn2, criterion)
 
-    # 开始时间
-    start = time.time()
-
-    # 迭代的次数
-    for iter in range(1, n_iters + 1):
-        current_loss=0
-        temp_all_score=[]
-        # 遍历训练数据的每一行
-        for feature in train_data:
-            original_score=torch.tensor(feature[0],dtype=torch.float)
-            sentence_tensor1=torch.tensor(feature[1],dtype=torch.float)
-            sentence_tensor2=torch.tensor(feature[2],dtype=torch.float)
-
-            # 参数为 相似度，第一个句子,第二个句子，原始相似度得分 ,第一个rnn模型，第二个rnn模型，以及学习率
-            predict_score,loss=train(sentence_tensor1, sentence_tensor2, original_score, rnn1, rnn2, learning_rate, criterion)
-            temp_all_score.append(predict_score.data.item())
-            current_loss += loss
-
-        # 记录本次迭代总损失
-        all_losses.append(current_loss)
-        if current_loss<best_loss:
-            best_loss=current_loss
-            all_score=temp_all_score
-            torch.save(rnn1.state_dict(), "rnn1_params.pkl")
-            torch.save(rnn2.state_dict(), "rnn2_params.pkl")
-        print(current_loss)
+        all_score.append(predict_score.data.item())
+        all_loss.append(loss)
 
     print(all_score)
-
+    csv_to_write=open('predict_test_data.csv','w',encoding='utf-8')
+    for score in all_score:
+        csv_to_write.write(str(score))
+        csv_to_write.write('\n')
