@@ -101,7 +101,7 @@ class RNN(nn.Module):
         return output, hidden
 
     def initHidden(self):
-        return torch.zeros(1,self.hidden_size)
+        return torch.zeros(1,self.hidden_size).to(device)
 
 
 # 参数为 相似度，第一个句子,第二个句子，原始相似度得分 ,第一个rnn模型，第二个rnn模型，以及学习率
@@ -140,9 +140,22 @@ def train(sentence_tensor1,sentence_tensor2, original_score, rnn1, rnn2,learning
     return predict_score, loss.item()
 
 
+def timeSince(since):
+    now = time.time()
+    s = now - since
+    m = math.floor(s / 60)
+    s -= m * 60
+    print('%dm %ds' % (m, s))
+
+
 if __name__=='__main__':
-    train_data_raw=load_data('data/sts-train.txt')[:100]
-    dev_data_raw=load_data('data/sts-dev.txt')[:100]
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    print("Now using: "+str(device))
+    # 开始时间
+    prerocess_start = time.time()
+
+    train_data_raw=load_data('data/sts-train.txt')
+    dev_data_raw=load_data('data/sts-dev.txt')
     # test_data_raw=load_data('data/sts-test.txt')[:100]
 
     word_dict=get_word_dict(train_data_raw,dev_data_raw)
@@ -153,6 +166,8 @@ if __name__=='__main__':
     # test_data=get_word_vect(test_data_raw,word_dict)
 
     # print(train_data[:3])
+    print("Done preprocessing data")
+    timeSince(prerocess_start)
     #---------------------以上是数据处理部分----------------------------
 
     # 隐层的维度
@@ -162,13 +177,13 @@ if __name__=='__main__':
     # 损失函数
     criterion = nn.SmoothL1Loss()
     # 句子1的RNN模型
-    rnn1 = RNN(dict_len, n_hidden, n_output)
+    rnn1 = RNN(dict_len, n_hidden, n_output).to(device)
     # 句子2的RNN模型
-    rnn2 = RNN(dict_len, n_hidden, n_output)
+    rnn2 = RNN(dict_len, n_hidden, n_output).to(device)
     # 迭代次数
-    n_iters = 500
+    n_iters = 10
     # 学习率
-    learning_rate=0.1
+    learning_rate=0.5
 
     # print_every = 5000
     # plot_every = 1000
@@ -182,25 +197,18 @@ if __name__=='__main__':
     # 记录预测的结果
     all_score=[]
 
-    def timeSince(since):
-        now = time.time()
-        s = now - since
-        m = math.floor(s / 60)
-        s -= m * 60
-        return '%dm %ds' % (m, s)
 
-    # 开始时间
-    start = time.time()
-
+    train_start_time=time.time()
     # 迭代的次数
     for iter in range(1, n_iters + 1):
         current_loss=0
         temp_all_score=[]
         # 遍历训练数据的每一行
+        iter_start_time=time.time()
         for feature in train_data:
-            original_score=torch.tensor(feature[0],dtype=torch.float)
-            sentence_tensor1=torch.tensor(feature[1],dtype=torch.float)
-            sentence_tensor2=torch.tensor(feature[2],dtype=torch.float)
+            original_score=torch.tensor(feature[0],dtype=torch.float).to(device)
+            sentence_tensor1=torch.tensor(feature[1],dtype=torch.float).to(device)
+            sentence_tensor2=torch.tensor(feature[2],dtype=torch.float).to(device)
 
             # 参数为 相似度，第一个句子,第二个句子，原始相似度得分 ,第一个rnn模型，第二个rnn模型，以及学习率
             predict_score,loss=train(sentence_tensor1, sentence_tensor2, original_score, rnn1, rnn2, learning_rate, criterion)
@@ -216,5 +224,8 @@ if __name__=='__main__':
             torch.save(rnn2.state_dict(), "rnn2_params.pkl")
         print(current_loss)
 
+        timeSince(iter_start_time)
+
     print(all_score)
+    timeSince(train_start_time)
 

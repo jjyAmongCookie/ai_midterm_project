@@ -1,5 +1,5 @@
 import torch
 
-a=[[1,2,3]]
-print(torch.tensor(a))
-
+t1=torch.tensor([[0,0,1]])
+t2=t1.view(1,1,-1)
+print(t2)
