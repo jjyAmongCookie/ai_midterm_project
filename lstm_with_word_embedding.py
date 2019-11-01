@@ -4,56 +4,54 @@ import time
 import math
 
 from datetime import datetime
-from gensim.models import word2vec
+
 import numpy as np
 
 import torch
 from torch.autograd import Variable
 from model import Siamese_lstm
 import torch.nn as nn
-
+from gensim.models import word2vec
 
 # 输入：文件名
 # 输出：二维矩阵，每一行代表一个训练样本里的两个句子以及相似度
 def load_data(filename):
-    file = open(filename, 'r', encoding='utf-8')
-    result = []
+    file=open(filename,'r',encoding='utf-8')
+    result=[]
     for line in file:
         # 取第4列到第6列
         # 分别是 相似度 句子1 句子2
-        temp = []
+        temp=[]
         li = line.split('\t')[4:7]
         temp.append(float(li[0]))
-        for sentence in [li[1], li[2]]:
+        for sentence in [li[1],li[2]]:
             for punc in string.punctuation:
-                sentence = sentence.replace(punc, ' ')
-            sentence = sentence.replace('  ', ' ')
-            sentence = sentence.strip().split(' ')
+                sentence=sentence.replace(punc,' ')
+            sentence=sentence.replace('  ',' ')
+            sentence=sentence.strip().split(' ')
 
             temp.append(sentence)
         result.append(temp)
 
     return result
 
-
 # 构建词典
 # 输入是train和dev的数据
-def get_word_dict(train_data, dev_data):
-    word_set = set()
-    dict = {}
+def get_word_dict(train_data,dev_data):
+    word_set=set()
+    dict={}
     # cnt储存字的位置
-    cnt = 0
-    for data in [train_data, dev_data]:
+    cnt=0
+    for data in [train_data,dev_data]:
         for v in data:
             # 句子1和句子2
-            for s in [v[1], v[2]]:
+            for s in [v[1],v[2]]:
                 for word in s:
                     if word not in word_set:
                         word_set.add(word)
-                        dict[word] = cnt
-                        cnt += 1
+                        dict[word]=cnt
+                        cnt+=1
     return dict
-
 
 # 获得表示成向量的词语
 # 输入为数据，字典，以及预训练的embedding模型
@@ -91,7 +89,6 @@ def get_word_vect(data,word_dict,model):
         # print(temp)
     return result
 
-
 def timeSince(since):
     now = time.time()
     s = now - since
@@ -100,43 +97,44 @@ def timeSince(since):
     return '%dm %ds' % (m, s)
 
 
-if __name__ == '__main__':
+if __name__=='__main__':
     # ------------------数据处理---------------------------------------
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    print("Now using: " + str(device))
+    print("Now using: "+str(device))
 
     # 开始时间
     prerocess_start = time.time()
 
-    train_data_raw = load_data('data/sts-train.txt')
-    dev_data_raw = load_data('data/sts-dev.txt')
+    train_data_raw=load_data('data/sts-train.txt')
+    dev_data_raw=load_data('data/sts-dev.txt')
 
-    word_dict = get_word_dict(train_data_raw, dev_data_raw)
-    # dict_len = len(word_dict) + 1
+    word_dict=get_word_dict(train_data_raw,dev_data_raw)
+    # dict_len=len(word_dict)+1
     dict_len=101
-    print("The length of the word_list is " + str(dict_len))
+    print("The length of the word_list is "+str(dict_len))
 
     # 获取与训练好的模型
     model = word2vec.Word2Vec.load('word2vec_corpus/word2vec.model')
-    train_data = get_word_vect(train_data_raw, word_dict,model)
-    dev_data = get_word_vect(dev_data_raw, word_dict,model)
+    train_data=get_word_vect(train_data_raw,word_dict,model)
+    dev_data=get_word_vect(dev_data_raw,word_dict,model)
 
-    print("Done preprocessing data, spent " + timeSince(prerocess_start))
+    print("Done preprocessing data, spent "+timeSince(prerocess_start))
     # ---------------------以上是数据处理部分----------------------------
+
 
     # ---------------------模型参数--------------------------
     # 输入向量的特征维度
-    embed_size = dict_len
-    batch_size = 1
+    embed_size=dict_len
+    batch_size=1
     # 隐藏层维度
-    hidden_size = 128
+    hidden_size=128
     # 单层 LSTM
-    num_layers = 1
+    num_layers=3
     # dropout概率
-    drop_out_prob = 0
+    drop_out_prob=0
     # 初始化模型
-    siamese = Siamese_lstm(embed_size, batch_size, hidden_size, num_layers, drop_out_prob)
-    siamese = siamese.to(device)
+    siamese = Siamese_lstm(embed_size,batch_size,hidden_size,num_layers,drop_out_prob)
+    siamese=siamese.to(device)
     # -----------以上是模型参数部分-----------------------
 
     # 学习率
@@ -145,24 +143,21 @@ if __name__ == '__main__':
     optimizer = torch.optim.Adadelta(filter(lambda x: x.requires_grad, siamese.parameters()), lr=learning_rate)
     # 损失函数
     criterion = nn.MSELoss()
-    criterion = criterion.to(device)
+    criterion=criterion.to(device)
 
     # 最好的一次损失
     best_loss = float('inf')
 
     # 迭代次数
-    n_epoch = 80
+    n_epoch = 10
     epoch = 1
 
-    train_start_time = time.time()
-
-    # 记录所有epoch的训练损失
-    all_train_mean_loss=[]
+    train_start_time=time.time()
     # 开始训练
-    while epoch <= n_epoch:
+    while epoch < n_epoch:
         print('Start Epoch {} Training...'.format(epoch))
 
-        epoch_start_time = time.time()
+        epoch_start_time=time.time()
 
         # loss
         train_loss = []
@@ -170,8 +165,8 @@ if __name__ == '__main__':
         for idx, data in enumerate(train_data):
             # 获取数据
             original_score = torch.tensor(data[0], dtype=torch.float32).to(device)
-            sentence_tensor1 = torch.tensor(data[1], dtype=torch.float32).to(device)
-            sentence_tensor2 = torch.tensor(data[2], dtype=torch.float32).to(device)
+            sentence_tensor1=torch.tensor(data[1],dtype=torch.float32).to(device)
+            sentence_tensor2=torch.tensor(data[2],dtype=torch.float32).to(device)
 
             # 清除梯度
             optimizer.zero_grad()
@@ -190,19 +185,12 @@ if __name__ == '__main__':
             # 更新梯度
             optimizer.step()
             train_loss.append(loss.data.cpu())
-        print("Train this epoch spent: " + timeSince(epoch_start_time))
-        train_mean_loss=sum(train_loss)/len(train_loss)
-        print('Epoch %d train mean loss: %f' % (epoch, train_mean_loss))
-        all_train_mean_loss.append(train_mean_loss)
-        if  epoch>=10 and all_train_mean_loss[-1]>all_train_mean_loss[-2]:
-            learning_rate=learning_rate/2
-            print('!!!!!!!'+str(learning_rate))
-            for param_group in optimizer.param_groups:
-                param_group['lr'] = learning_rate
+        print("Train this epoch spent: "+timeSince(epoch_start_time))
+        print('Epoch %d train mean loss: %f' %(epoch,sum(train_loss)/len(train_loss)))
 
         # loss
         valid_loss = []
-        valid_start_time = time.time()
+        valid_start_time=time.time()
         for idx, data in enumerate(dev_data):
             original_score = torch.tensor(data[0], dtype=torch.float).to(device)
             sentence_tensor1 = torch.tensor(data[1], dtype=torch.float).to(device)
@@ -218,16 +206,17 @@ if __name__ == '__main__':
             # loss
             loss = criterion(output, original_score)
             valid_loss.append(loss.data.cpu())
-        print("Eval this epoch spent: " + timeSince(valid_start_time))
+        print("Eval this epoch spent: "+timeSince(valid_start_time))
         print('Epoch %d valid mean loss: %f' % (epoch, sum(valid_loss) / len(valid_loss)))
+
 
         # 查看与最好的loss的差距
         if np.mean(valid_loss) < best_loss:
             best_loss = np.mean(valid_loss)
-            torch.save(siamese.state_dict(), "lstm_params_with_word_embedding.pkl")
+            torch.save(siamese.state_dict(), "lstm_params.pkl")
             # save the best model
-        print("Epoch %d spent %s" % (epoch, timeSince(epoch_start_time)))
+        print("Epoch %d spent %s" %(epoch,timeSince(epoch_start_time)))
         epoch += 1
 
-    print("Train spent " + timeSince(train_start_time))
+    print("Train spent "+timeSince(train_start_time))
 
